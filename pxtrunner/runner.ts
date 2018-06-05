@@ -186,10 +186,12 @@ namespace pxt.runner {
         console.error(msg)
     }
 
-    function loadPackageAsync(id: string, code?: string) {
+    function loadPackageAsync(id: string, code?: string, files?: pxt.Map<string>) {
         let host = mainPkg.host();
         mainPkg = new pxt.MainPackage(host)
         mainPkg._verspec = id ? /\w+:\w+/.test(id) ? id : "pub:" + id : "empty:tsprj"
+        if (files)
+            getEditorPkg(mainPkg).setFiles(files);
 
         return host.downloadPackageAsync(mainPkg)
             .then(() => host.readFile(mainPkg, pxt.CONFIG_NAME))
@@ -224,8 +226,8 @@ namespace pxt.runner {
         return mainPkg.getCompileOptionsAsync(trg)
     }
 
-    function compileAsync(hex: boolean, updateOptions?: (ops: pxtc.CompileOptions) => void) {
-        return getCompileOptionsAsync()
+    function compileAsync(hex: boolean, updateOptions?: (ops: pxtc.CompileOptions) => void): Promise<pxtc.CompileResult> {
+        return getCompileOptionsAsync(hex)
             .then(opts => {
                 if (updateOptions) updateOptions(opts);
                 let resp = pxtc.compile(opts)
@@ -385,17 +387,24 @@ namespace pxt.runner {
                         uri: res ? res.xml : undefined,
                         css: res ? res.css : undefined
                     }, "*");
-                    jobPromise = undefined;
-                    consumeQueue();
-                })
+                });
         }
 
         function consumeCompile(msg: pxsim.CompileRequestMessage) {
             pxt.tickEvent("renderer.compile")
-            jobPromise = Promise.resolve()
-                .then(() => {
-                    jobPromise = undefined;
-                    consumeQueue();
+            jobPromise = pxt.cpp.unpackSourceFromHexAsync(msg.data)
+                .then((file: cpp.HexFile) => {
+                    const files = JSON.parse(file.source);
+                    return loadPackageAsync(undefined, undefined, files);
+                }).then(() => compileAsync(true))
+                .then(resp => {
+                    const data = resp.outfiles[pxtc.BINARY_HEX] || resp.outfiles[pxtc.BINARY_UF2] || resp.outfiles[pxtc.BINARY_JS];
+                    window.parent.postMessage(<pxsim.CompileResponseMessage>{
+                        source: "makecode",
+                        type: "compile",
+                        id: msg.id,
+                        data
+                    }, "*");
                 })
         }
 
@@ -404,6 +413,7 @@ namespace pxt.runner {
             const msg = jobQueue.shift();
             if (!msg) return; // no more work
 
+            jobPromise = Promise.resolve();
             switch (msg.type) {
                 case "renderblocks":
                     consumeRenderBlocks(msg as pxsim.RenderBlocksRequestMessage);
@@ -412,6 +422,22 @@ namespace pxt.runner {
                     consumeCompile(msg as pxsim.CompileRequestMessage);
                     break;
             }
+            jobPromise = jobPromise.then(() => {
+                jobPromise = undefined;
+                consumeQueue();
+            }, e => {
+                pxt.reportException(e);
+                window.parent.postMessage({
+                    source: "makecode",
+                    type: "error",
+                    id: msg.id,
+                    message: e.message
+                }, "*");
+                jobPromise = undefined;
+                consumeQueue();
+            });
+            // wait for job
+            jobPromise.done();
         }
 
         initEditorExtensionsAsync()

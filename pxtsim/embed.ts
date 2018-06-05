@@ -189,7 +189,7 @@ namespace pxsim {
 
     export interface CompileRequestMessage extends RequestMessage {
         type: "compile";
-        data: string;
+        data: Uint8Array;
     }
 
     export interface CompileResponseMessage extends RequestMessage {
