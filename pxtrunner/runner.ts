@@ -194,7 +194,7 @@ namespace pxt.runner {
         return host.downloadPackageAsync(mainPkg)
             .then(() => host.readFile(mainPkg, pxt.CONFIG_NAME))
             .then(str => {
-                if (!str) return Promise.resolve()
+                if (!str) return Promise.resolve();
                 return mainPkg.installAllAsync().then(() => {
                     if (code) {
                         //Set the custom code if provided for docs.
@@ -239,10 +239,8 @@ namespace pxt.runner {
     }
 
     export function generateHexFileAsync(options: SimulateOptions): Promise<string> {
-        return loadPackageAsync(options.id)
-            .then(() => compileAsync(true, opts => {
-                if (options.code) opts.fileSystem["main.ts"] = options.code;
-            }))
+        return loadPackageAsync(options.id, options.code)
+            .then(() => compileAsync(true))
             .then(resp => {
                 if (resp.diagnostics && resp.diagnostics.length > 0) {
                     console.error("Diagnostics", resp.diagnostics)
@@ -368,15 +366,11 @@ namespace pxt.runner {
     export function startRenderServer() {
         pxt.tickEvent("renderer.ready");
 
-        const jobQueue: pxsim.RenderBlocksRequestMessage[] = [];
+        const jobQueue: pxsim.RequestMessage[] = [];
         let jobPromise: Promise<void> = undefined;
 
-        function consumeQueue() {
-            if (jobPromise) return; // other worker already in action
-            const msg = jobQueue.shift();
-            if (!msg) return; // no more work
-
-            pxt.tickEvent("renderer.job")
+        function consumeRenderBlocks(msg: pxsim.RenderBlocksRequestMessage) {
+            pxt.tickEvent("renderer.renderblocks")
             jobPromise = pxt.BrowserUtils.loadBlocklyAsync()
                 .then(() => runner.decompileToBlocksAsync(msg.code, msg.options))
                 .then(result => result.blocksSvg ? pxt.blocks.layout.blocklyToSvgAsync(result.blocksSvg, 0, 0, result.blocksSvg.viewBox.baseVal.width, result.blocksSvg.viewBox.baseVal.height) : undefined)
@@ -396,15 +390,37 @@ namespace pxt.runner {
                 })
         }
 
+        function consumeCompile(msg: pxsim.CompileRequestMessage) {
+            pxt.tickEvent("renderer.compile")
+            jobPromise = Promise.resolve()
+                .then(() => {
+                    jobPromise = undefined;
+                    consumeQueue();
+                })
+        }
+
+        function consumeQueue() {
+            if (jobPromise) return; // other worker already in action
+            const msg = jobQueue.shift();
+            if (!msg) return; // no more work
+
+            switch (msg.type) {
+                case "renderblocks":
+                    consumeRenderBlocks(msg as pxsim.RenderBlocksRequestMessage);
+                    break;
+                case "compile":
+                    consumeCompile(msg as pxsim.CompileRequestMessage);
+                    break;
+            }
+        }
+
         initEditorExtensionsAsync()
             .done(() => {
                 // notify parent that render engine is loaded
                 window.addEventListener("message", function (ev) {
-                    const msg = ev.data as pxsim.RenderBlocksRequestMessage;
-                    if (msg.type == "renderblocks") {
-                        jobQueue.push(msg);
-                        consumeQueue();
-                    }
+                    const msg = ev.data as pxsim.RequestMessage;
+                    jobQueue.push(msg);
+                    consumeQueue();
                 }, false);
                 window.parent.postMessage(<pxsim.RenderReadyResponseMessage>{
                     source: "makecode",

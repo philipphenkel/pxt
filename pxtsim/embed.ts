@@ -165,9 +165,12 @@ namespace pxsim {
         type: "renderready"
     }
 
-    export interface RenderBlocksRequestMessage extends SimulatorMessage {
-        type: "renderblocks",
+    export interface RequestMessage extends SimulatorMessage {
         id: string;
+    }
+
+    export interface RenderBlocksRequestMessage extends RequestMessage {
+        type: "renderblocks",
         code?: string;
         options?: {
             packageId?: string;
@@ -176,13 +179,23 @@ namespace pxsim {
         }
     }
 
-    export interface RenderBlocksResponseMessage extends SimulatorMessage {
+    export interface RenderBlocksResponseMessage extends RequestMessage {
         source: "makecode",
         type: "renderblocks",
-        id: string;
         svg?: string;
         width?: number;
         height?: number;
+    }
+
+    export interface CompileRequestMessage extends RequestMessage {
+        type: "compile";
+        data: string;
+    }
+
+    export interface CompileResponseMessage extends RequestMessage {
+        source: "makecode";
+        type: "compile";
+        data: string;
     }
 
     export function print(delay: number = 0) {
