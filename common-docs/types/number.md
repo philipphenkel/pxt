@@ -1,10 +1,11 @@
 # Number
 
-An integer number.
+A *Number* is either a whole number or a number with a fractional part.
 
 ### @parent blocks/language
 
-A *Number* is an integer such as `42` or `-42`. More precisely, a *Number* is a signed 32-bit integer (two's complement).
+An integer *Number* such as `42` or `-42` is a signed 32-bit integer (two's complement).
+A floating point number such as `3.1416` is a 64 bit double precision floating point number.
 
 ### Declare a number variable
 
@@ -14,13 +15,14 @@ You can assign a number to a variable:
 
 ```block
 let num = 42;
+let pi = 3.1416;
 ```
 
 ### Arithmetic operators
 
 The following arithmetic operators work on numbers and return a [Number](/types/number):
 
-*  addition: `1 + 3`
+* addition: `1 + 3`
 * subtraction: `1 - 3 `
 * multiplication: `3 * 2`
 * integer division: `7 / 3`
